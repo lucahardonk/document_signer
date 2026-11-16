@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>PDF Signer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px system-ui,sans-serif;background:#111;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── toolbar ── */
+#bar{background:#1e1e2e;padding:8px 14px;display:flex;align-items:center;gap:10px;
+     border-bottom:2px solid #e94560;flex-shrink:0;flex-wrap:wrap}
+#bar h1{font-size:.95rem;color:#e94560;white-space:nowrap;margin-right:4px}
+.btn{background:#2a2a3e;color:#eee;border:1px solid #333;padding:6px 13px;
+     border-radius:5px;cursor:pointer;font-size:.82rem;white-space:nowrap;transition:background .15s}
+.btn:hover{background:#e94560;border-color:#e94560}
+.btn.ok{background:#e94560;border-color:#e94560}
+.btn.ok:hover{background:#c03}
+.btn:disabled{opacity:.35;cursor:default;background:#2a2a3e !important}
+#sp{flex:1}
+
+/* ── page navigation ── */
+#pnav{display:none;align-items:center;gap:5px}
+#pi{font-size:.8rem;min-width:48px;text-align:center;color:#aaa}
+
+/* ── layout ── */
+#wrap{display:flex;flex:1;overflow:hidden}
+#panel{width:195px;background:#181828;padding:12px;display:flex;flex-direction:column;
+       gap:10px;border-right:2px solid #222;overflow-y:auto;flex-shrink:0}
+#panel label{font-size:.77rem;color:#aaa;display:block;margin-bottom:3px}
+#panel input[type=range]{width:100%;accent-color:#e94560}
+#panel hr{border:none;border-top:1px solid #2a2a3e}
+.vval{color:#fff;font-weight:600}
+
+/* ── signature upload box ── */
+.sdrop{border:2px dashed #444;border-radius:6px;padding:10px;text-align:center;
+       cursor:pointer;font-size:.77rem;color:#888;line-height:1.5;transition:.15s}
+.sdrop:hover{border-color:#e94560;color:#e94560}
+#sprev{width:100%;max-height:55px;object-fit:contain;background:#fff1;
+       border-radius:4px;margin-top:5px;display:none}
+
+/* ── canvas area ── */
+#area{flex:1;overflow:auto;display:flex;justify-content:center;
+      align-items:flex-start;padding:24px;background:#0d0d1a}
+#pdfwrap{position:relative;display:inline-block;line-height:0;display:none}
+#cv{display:block;box-shadow:0 2px 24px #000c}
+
+/* ── signature overlay ── */
+#sig{position:absolute;cursor:grab;user-select:none;
+     width:170px;height:65px;left:40px;top:40px;display:none}
+#sig:active{cursor:grabbing}
+#sig img{width:100%;height:100%;display:block;pointer-events:none;object-fit:fill;
+         border:1.5px dashed #e9456077;border-radius:2px}
+#rz{position:absolute;right:-6px;bottom:-6px;width:14px;height:14px;
+    background:#e94560;border:2px solid #fff;border-radius:3px;cursor:se-resize;
+    display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff}
+
+/* ── placeholder ── */
+#hint{text-align:center;color:#444;padding:80px 20px;font-size:.9rem;line-height:1.8}
+#hint .ico{font-size:3rem;margin-bottom:8px}
+
+/* ── tip text ── */
+.tip{font-size:.73rem;color:#555;line-height:1.6}
+.tip b{color:#888}
+</style>
+</head>
+<body>
+
+<!-- ── TOOLBAR ── -->
+<div id="bar">
+  <h1>✍️ PDF Signer</h1>
+
+  <button class="btn" onclick="document.getElementById('fi').click()">📂 Apri PDF</button>
+  <input type="file" id="fi" accept=".pdf" style="display:none" onchange="openPDF(this)">
+
+  <div id="pnav">
+    <button class="btn" onclick="gp(-1)">◀</button>
+    <span id="pi">1 / 1</span>
+    <button class="btn" onclick="gp(1)">▶</button>
+  </div>
+
+  <div id="sp"></div>
+
+  <button class="btn ok" id="expbtn" onclick="doExport()" disabled>💾 Esporta _firmato</button>
+</div>
+
+<!-- ── MAIN ── -->
+<div id="wrap">
+
+  <!-- ── PANEL ── -->
+  <div id="panel">
+
+    <div>
+      <label>Immagine firma</label>
+      <div class="sdrop" id="sdrop" onclick="document.getElementById('si').click()">
+        📷 Clicca per caricare<br>la tua firma (PNG/JPG)
+      </div>
+      <input type="file" id="si" accept="image/*" style="display:none" onchange="uploadSig(this)">
+      <img id="sprev" alt="firma">
+    </div>
+
+    <hr>
+
+    <div>
+      <label>Rotazione &nbsp;<span class="vval" id="av">0°</span></label>
+      <input type="range" id="asl" min="-180" max="180" value="0"
+             oninput="setAngle(+this.value)">
+    </div>
+
+    <div>
+      <label>Opacità &nbsp;<span class="vval" id="ov">100%</span></label>
+      <input type="range" id="osl" min="10" max="100" value="100"
+             oninput="setOpacity(+this.value)">
+    </div>
+
+    <div>
+      <label>Zoom pagina &nbsp;<span class="vval" id="sv">150%</span></label>
+      <input type="range" id="ssl" min="50" max="300" value="150" step="10"
+             oninput="setScale(+this.value)">
+    </div>
+
+    <hr>
+    <p class="tip">
+      • <b>Trascina</b> la firma per posizionarla<br>
+      • <b>Angolino rosso</b> in basso a destra = ridimensiona<br>
+      • <b>Rotazione</b>: usa lo slider<br>
+      • La firma è <b>salvata</b> per usi futuri
+    </p>
+
+  </div><!-- /panel -->
+
+  <!-- ── CANVAS AREA ── -->
+  <div id="area">
+    <div id="pdfwrap">
+      <canvas id="cv"></canvas>
+      <div id="sig">
+        <img id="simg" src="" draggable="false" alt="firma">
+        <div id="rz">⤡</div>
+      </div>
+    </div>
+    <div id="hint">
+      <div class="ico">📄</div>
+      Apri un PDF con il pulsante in alto<br>
+      poi posiziona la firma e clicca <strong>Esporta</strong>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- ── PDF.js ── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── state ──────────────────────────────────────────────────────────────────
+let pdfDoc   = null;
+let curPage  = 1;
+let pdfScale = 1.5;      // canvas pixels per PDF point
+let pdfId    = null;
+let pdfName  = 'documento.pdf';
+let sigAngle = 0;
+let sigOpacity = 1.0;
+
+// ── shortcuts ──────────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const cv = $('cv');
+const sigEl = $('sig');
+const rzEl  = $('rz');
+
+// ── PDF ────────────────────────────────────────────────────────────────────
+async function openPDF(inp) {
+  const file = inp.files[0];
+  if (!file) return;
+  inp.value = '';   // reset so same file can be re-opened
+
+  const fd = new FormData();
+  fd.append('pdf', file);
+
+  let res, data;
+  try {
+    res  = await fetch('/api/upload', { method: 'POST', body: fd });
+    data = await res.json();
+  } catch(e) { alert('Errore di rete: ' + e); return; }
+
+  if (!data.ok) { alert('Errore upload: ' + (data.error||'')); return; }
+  pdfId   = data.id;
+  pdfName = data.name || file.name;
+
+  // Load via PDF.js from server
+  const pdfUrl = '/api/pdf/' + pdfId;
+  pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+  curPage = 1;
+  await renderPage(curPage);
+
+  $('pdfwrap').style.display = 'inline-block';
+  $('hint').style.display    = 'none';
+  $('expbtn').disabled       = false;
+  $('pnav').style.display    = data.pages > 1 ? 'flex' : 'none';
+
+  // Show sig if already configured
+  if ($('simg').src && !$('simg').src.endsWith('/')) showSig();
+}
+
+async function renderPage(n) {
+  const page = await pdfDoc.getPage(n);
+  const vp   = page.getViewport({ scale: pdfScale });
+  cv.width   = vp.width;
+  cv.height  = vp.height;
+  await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+  $('pi').textContent = n + ' / ' + pdfDoc.numPages;
+}
+
+async function gp(delta) {
+  if (!pdfDoc) return;
+  const next = curPage + delta;
+  if (next < 1 || next > pdfDoc.numPages) return;
+  curPage = next;
+  await renderPage(curPage);
+}
+
+function setScale(v) {
+  pdfScale = v / 100;
+  $('sv').textContent = v + '%';
+  if (pdfDoc) renderPage(curPage);
+}
+
+// ── Signature ──────────────────────────────────────────────────────────────
+async function uploadSig(inp) {
+  const file = inp.files[0];
+  if (!file) return;
+  inp.value = '';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  let res, data;
+  try {
+    res  = await fetch('/api/signature', { method: 'POST', body: fd });
+    data = await res.json();
+  } catch(e) { alert('Errore: ' + e); return; }
+
+  if (!data.ok) { alert('Errore salvataggio firma'); return; }
+
+  const url = '/api/signature?t=' + Date.now();
+  $('simg').src  = url;
+  $('sprev').src = url;
+  $('sprev').style.display = 'block';
+  $('sdrop').textContent   = '✅ Firma salvata — clicca per cambiarla';
+  showSig();
+}
+
+function showSig() {
+  if ($('simg').src && !$('simg').src.endsWith('/')) {
+    sigEl.style.display = 'block';
+  }
+}
+
+function setAngle(v) {
+  sigAngle = v;
+  $('av').textContent = v + '°';
+  sigEl.style.transform = 'rotate(' + v + 'deg)';
+}
+
+function setOpacity(v) {
+  sigOpacity = v / 100;
+  $('ov').textContent  = v + '%';
+  sigEl.style.opacity  = sigOpacity;
+}
+
+// ── Drag ───────────────────────────────────────────────────────────────────
+let dragging = false, dsx, dsy, dox, doy;
+let resizing = false, rsx, rsy, rsw, rsh;
+
+sigEl.addEventListener('mousedown', e => {
+  if (e.target === rzEl) return;
+  dragging = true;
+  dsx = e.clientX; dsy = e.clientY;
+  dox = sigEl.offsetLeft; doy = sigEl.offsetTop;
+  e.preventDefault();
+});
+
+rzEl.addEventListener('mousedown', e => {
+  resizing = true;
+  rsx = e.clientX; rsy = e.clientY;
+  rsw = sigEl.offsetWidth; rsh = sigEl.offsetHeight;
+  e.stopPropagation();
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (dragging) {
+    sigEl.style.left = (dox + e.clientX - dsx) + 'px';
+    sigEl.style.top  = (doy + e.clientY - dsy) + 'px';
+  }
+  if (resizing) {
+    const nw = Math.max(30, rsw + e.clientX - rsx);
+    const nh = Math.max(15, rsh + e.clientY - rsy);
+    sigEl.style.width  = nw + 'px';
+    sigEl.style.height = nh + 'px';
+  }
+});
+
+document.addEventListener('mouseup', () => { dragging = false; resizing = false; });
+
+// ── Export ─────────────────────────────────────────────────────────────────
+async function doExport() {
+  if (!pdfId)                           { alert('Apri prima un PDF');             return; }
+  if (sigEl.style.display === 'none')   { alert('Nessuna firma: caricala prima'); return; }
+
+  // Converti pixel canvas → punti PDF
+  const x = sigEl.offsetLeft  / pdfScale;
+  const y = sigEl.offsetTop   / pdfScale;
+  const w = sigEl.offsetWidth  / pdfScale;
+  const h = sigEl.offsetHeight / pdfScale;
+
+  const btn = $('expbtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Esportazione...';
+
+  try {
+    const res = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id:      pdfId,
+        name:    pdfName,
+        page:    curPage - 1,   // 0-indexed per PyMuPDF
+        x, y, w, h,
+        angle:   sigAngle,
+        opacity: sigOpacity
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Errore: ' + (err.error || res.status));
+    } else {
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = pdfName.replace(/\.pdf$/i, '') + '_firmato.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      btn.textContent = '✅ Scaricato!';
+      setTimeout(() => { btn.textContent = '💾 Esporta _firmato'; }, 2500);
+    }
+  } catch(e) {
+    alert('Errore di rete: ' + e);
+    btn.textContent = '💾 Esporta _firmato';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Carica firma salvata all'avvio ─────────────────────────────────────────
+(async () => {
+  const res = await fetch('/api/signature');
+  if (res.ok) {
+    const url = '/api/signature?t=' + Date.now();
+    $('simg').src  = url;
+    $('sprev').src = url;
+    $('sprev').style.display = 'block';
+    $('sdrop').textContent   = '✅ Firma già salvata — clicca per cambiarla';
+  }
+})();
+</script>
+</body>
+</html>
