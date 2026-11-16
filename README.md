@@ -51,6 +51,14 @@ Poi apri il browser su:
 http://localhost:5000
 ```
 
+Per usare un'altra porta, passala come argomento a `run.sh` (viene inoltrata a `app.py --port`):
+
+```bash
+./run.sh 8080          # → http://localhost:8080
+# oppure direttamente:
+python3 app.py --port 8080
+```
+
 ---
 
 ## Uso

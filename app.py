@@ -136,5 +136,9 @@ def export():
 
 
 if __name__ == "__main__":
-    print("🖊️  PDF Signer avviato → http://localhost:5000")
-    app.run(port=5000, debug=False)
+    import argparse
+    ap = argparse.ArgumentParser(description="PDF Signer")
+    ap.add_argument("--port", type=int, default=5000, help="porta HTTP (default 5000)")
+    args = ap.parse_args()
+    print(f"🖊️  PDF Signer avviato → http://localhost:{args.port}")
+    app.run(port=args.port, debug=False)

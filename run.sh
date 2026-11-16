@@ -12,8 +12,11 @@ fi
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
 
+# Porta: primo argomento (es. ./run.sh 8080), default 5000
+PORT="${1:-5000}"
+
 echo ""
-echo "✅ Avvio PDF Signer → http://localhost:5000"
+echo "✅ Avvio PDF Signer → http://localhost:$PORT"
 echo "   (Ctrl+C per uscire)"
 echo ""
-.venv/bin/python app.py
+.venv/bin/python app.py --port "$PORT"
